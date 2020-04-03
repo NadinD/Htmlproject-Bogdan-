@@ -1,11 +1,15 @@
 from flask import Flask, url_for, render_template, redirect
-from flask_login import LoginManager, login_user, login_required, logout_user
+from flask_login import LoginManager, login_user, login_required, logout_user, current_user
+
+from LoginForm import LoginForm
+from RegisterForm import RegisterForm
+from bogdan.data.review import Review
+from bogdan.data.brands import Brands
+from bogdan.data.reviewform import ReviewForm
 
 from data import db_session
 
-from data.loginform import LoginForm
-from data.register_form import RegisterForm
-from data.users import User
+from bogdan.data.users import User
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'auto_secret_key'
@@ -14,9 +18,30 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 
 
-@app.route('/')
+@app.route("/")
 def auto():
-    return render_template('base.html')
+    session = db_session.create_session()
+    reviews = session.query(Review).all()
+    return render_template("index.html", reviews=reviews)
+
+
+@app.route('/review', methods=['GET', 'POST'])
+@login_required
+def add_review():
+    session = db_session.create_session()
+    form = ReviewForm()
+    form.brand.choices = [(x.id, x.name) for x in session.query(Brands).order_by(Brands.name.asc())]
+    if form.validate_on_submit():
+        review = Review()
+        review.brand_id = form.brand.data
+        review.model = form.model.data
+        review.text = form.text.data
+        current_user.reviews.append(review)
+        session.merge(current_user)
+        session.commit()
+        return redirect('/')
+    return render_template('review.html', title='Добавление запись',
+                           form=form)
 
 
 @login_manager.user_loader
@@ -40,7 +65,6 @@ def login():
     return render_template('login.html', title='Авторизация', form=form)
 
 
-@app.route('/register', methods=['GET', 'POST'])
 @app.route('/logout')
 @login_required
 def logout():
@@ -48,6 +72,7 @@ def logout():
     return redirect("/")
 
 
+@app.route('/register', methods=['GET', 'POST'])
 def reqister():
     form = RegisterForm()
     if form.validate_on_submit():
